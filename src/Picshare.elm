@@ -23,8 +23,13 @@ type alias Photo =
     }
 
 
+type alias Feed =
+    List Photo
+
+
 type alias Model =
-    { photo : Maybe Photo
+    { feed : Maybe Feed
+    , error : Maybe Http.Error
     }
 
 
@@ -46,7 +51,9 @@ baseUrl =
 
 initialModel : Model
 initialModel =
-    { photo = Nothing }
+    { feed = Nothing
+    , error = Nothing
+    }
 
 
 init : () -> ( Model, Cmd Msg )
@@ -57,9 +64,30 @@ init () =
 fetchFeed : Cmd Msg
 fetchFeed =
     Http.get
-        { url = baseUrl ++ "feed/1"
-        , expect = Http.expectJson LoadFeed photoDecoder
+        { url = baseUrl ++ "feed"
+        , expect = Http.expectJson LoadFeed (list photoDecoder)
         }
+
+
+errorMessage : Http.Error -> String
+errorMessage error =
+    case error of
+        Http.BadBody _ ->
+            """notFound!"""
+
+        _ ->
+            """Sorry, we couldn't load your feed at this time. Please try again later."""
+
+
+viewContent : Model -> Html Msg
+viewContent model =
+    case model.error of
+        Just error ->
+            div [ class "feed-error" ]
+                [ text (errorMessage error) ]
+
+        Nothing ->
+            viewFeed model.feed
 
 
 viewLoveButton : Photo -> Html Msg
@@ -76,7 +104,7 @@ viewLoveButton photo =
         [ i
             [ class " fa fa-2x"
             , class buttonClass
-            , onClick ToggleLike
+            , onClick (ToggleLike photo.id)
             ]
             []
         ]
@@ -107,12 +135,15 @@ viewComments : Photo -> Html Msg
 viewComments photo =
     div []
         [ viewCommentList photo.comments
-        , form [ class "new-comment", onSubmit SaveComment ]
+        , form
+            [ class "new-comment"
+            , onSubmit (SaveComment photo.id)
+            ]
             [ input
                 [ type_ "text"
                 , placeholder "Add a comment..."
                 , value photo.newComment
-                , onInput UpdateComment
+                , onInput (UpdateComment photo.id)
                 ]
                 []
             , button
@@ -134,11 +165,11 @@ viewDetailedPhoto photo =
         ]
 
 
-viewFeed : Maybe Photo -> Html Msg
-viewFeed maybePhoto =
-    case maybePhoto of
-        Just photo ->
-            viewDetailedPhoto photo
+viewFeed : Maybe Feed -> Html Msg
+viewFeed maybeFeed =
+    case maybeFeed of
+        Just feed ->
+            div [] (List.map viewDetailedPhoto feed)
 
         Nothing ->
             div [ class "loading-feed" ]
@@ -151,15 +182,15 @@ view model =
         [ div [ class "header" ]
             [ h1 [] [ text "PicShare" ] ]
         , div [ class "content-flow" ]
-            [ viewFeed model.photo ]
+            [ viewContent model ]
         ]
 
 
 type Msg
-    = ToggleLike
-    | UpdateComment String
-    | SaveComment
-    | LoadFeed (Result Http.Error Photo)
+    = ToggleLike Id
+    | UpdateComment Id String
+    | SaveComment Id
+    | LoadFeed (Result Http.Error Feed)
 
 
 saveNewComment : Photo -> Photo
@@ -189,42 +220,55 @@ updateComment comment photo =
     { photo | newComment = comment }
 
 
-updateFeed : (Photo -> Photo) -> Maybe Photo -> Maybe Photo
-updateFeed updatePhoto maybePhoto =
-    Maybe.map updatePhoto maybePhoto
+updatePhotoById : (Photo -> Photo) -> Id -> Feed -> Feed
+updatePhotoById updatePhoto id feed =
+    List.map
+        (\photo ->
+            if photo.id == id then
+                updatePhoto photo
+
+            else
+                photo
+        )
+        feed
+
+
+updateFeed : (Photo -> Photo) -> Id -> Maybe Feed -> Maybe Feed
+updateFeed updatePhoto id maybeFeed =
+    Maybe.map (updatePhotoById updatePhoto id) maybeFeed
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ToggleLike ->
+        ToggleLike id ->
             ( { model
-                | photo = updateFeed toggleLike model.photo
+                | feed = updateFeed toggleLike id model.feed
               }
             , Cmd.none
             )
 
-        UpdateComment comment ->
+        UpdateComment id comment ->
             ( { model
-                | photo = updateFeed (updateComment comment) model.photo
+                | feed = updateFeed (updateComment comment) id model.feed
               }
             , Cmd.none
             )
 
-        SaveComment ->
+        SaveComment id ->
             ( { model
-                | photo = updateFeed saveNewComment model.photo
+                | feed = updateFeed saveNewComment id model.feed
               }
             , Cmd.none
             )
 
-        LoadFeed (Ok photo) ->
-            ( { model | photo = Just photo }
+        LoadFeed (Ok feed) ->
+            ( { model | feed = Just feed }
             , Cmd.none
             )
 
-        LoadFeed (Err _) ->
-            ( model, Cmd.none )
+        LoadFeed (Err error) ->
+            ( { model | error = Just error }, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
