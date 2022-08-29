@@ -6175,15 +6175,20 @@ var $author$project$Picshare$fetchFeed = $elm$http$Http$get(
 			$elm$json$Json$Decode$list($author$project$Picshare$photoDecoder)),
 		url: $author$project$Picshare$baseUrl + 'feed'
 	});
-var $author$project$Picshare$initialModel = {feed: $elm$core$Maybe$Nothing};
+var $author$project$Picshare$initialModel = {error: $elm$core$Maybe$Nothing, feed: $elm$core$Maybe$Nothing};
 var $author$project$Picshare$init = function (_v0) {
 	return _Utils_Tuple2($author$project$Picshare$initialModel, $author$project$Picshare$fetchFeed);
 };
-var $elm$core$Platform$Sub$batch = _Platform_batch;
-var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
-var $author$project$Picshare$subscriptions = function (model) {
-	return $elm$core$Platform$Sub$none;
+var $author$project$Picshare$LoadStreamPhoto = function (a) {
+	return {$: 'LoadStreamPhoto', a: a};
 };
+var $author$project$WebSocket$receive = _Platform_incomingPort('receive', $elm$json$Json$Decode$string);
+var $author$project$Picshare$subscriptions = function (model) {
+	return $author$project$WebSocket$receive($author$project$Picshare$LoadStreamPhoto);
+};
+var $elm$json$Json$Encode$string = _Json_wrap;
+var $author$project$WebSocket$listen = _Platform_outgoingPort('listen', $elm$json$Json$Encode$string);
+var $elm$core$Debug$log = _Debug_log;
 var $elm$core$Platform$Cmd$batch = _Platform_batch;
 var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $elm$core$String$trim = _String_trim;
@@ -6241,6 +6246,7 @@ var $author$project$Picshare$updateFeed = F3(
 			A2($author$project$Picshare$updatePhotoById, updatePhoto, id),
 			maybeFeed);
 	});
+var $author$project$Picshare$wsUrl = 'wss://programming-elm.com/';
 var $author$project$Picshare$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
@@ -6276,7 +6282,7 @@ var $author$project$Picshare$update = F2(
 							feed: A3($author$project$Picshare$updateFeed, $author$project$Picshare$saveNewComment, id, model.feed)
 						}),
 					$elm$core$Platform$Cmd$none);
-			default:
+			case 'LoadFeed':
 				if (msg.a.$ === 'Ok') {
 					var feed = msg.a.a;
 					return _Utils_Tuple2(
@@ -6285,13 +6291,23 @@ var $author$project$Picshare$update = F2(
 							{
 								feed: $elm$core$Maybe$Just(feed)
 							}),
-						$elm$core$Platform$Cmd$none);
+						$author$project$WebSocket$listen($author$project$Picshare$wsUrl));
 				} else {
-					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					var error = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just(error)
+							}),
+						$elm$core$Platform$Cmd$none);
 				}
+			default:
+				var data = msg.a;
+				var _v1 = A2($elm$core$Debug$log, 'WebSocket data', data);
+				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 		}
 	});
-var $elm$json$Json$Encode$string = _Json_wrap;
 var $elm$html$Html$Attributes$stringProperty = F2(
 	function (key, string) {
 		return A2(
@@ -6304,6 +6320,13 @@ var $elm$html$Html$div = _VirtualDom_node('div');
 var $elm$html$Html$h1 = _VirtualDom_node('h1');
 var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
 var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
+var $author$project$Picshare$errorMessage = function (error) {
+	if (error.$ === 'BadBody') {
+		return 'notFound!';
+	} else {
+		return 'Sorry, we couldn\'t load your feed at this time. Please try again later.';
+	}
+};
 var $elm$html$Html$h2 = _VirtualDom_node('h2');
 var $elm$html$Html$img = _VirtualDom_node('img');
 var $elm$html$Html$Attributes$src = function (url) {
@@ -6569,6 +6592,25 @@ var $author$project$Picshare$viewFeed = function (maybeFeed) {
 				]));
 	}
 };
+var $author$project$Picshare$viewContent = function (model) {
+	var _v0 = model.error;
+	if (_v0.$ === 'Just') {
+		var error = _v0.a;
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('feed-error')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text(
+					$author$project$Picshare$errorMessage(error))
+				]));
+	} else {
+		return $author$project$Picshare$viewFeed(model.feed);
+	}
+};
 var $author$project$Picshare$view = function (model) {
 	return A2(
 		$elm$html$Html$div,
@@ -6599,7 +6641,7 @@ var $author$project$Picshare$view = function (model) {
 					]),
 				_List_fromArray(
 					[
-						$author$project$Picshare$viewFeed(model.feed)
+						$author$project$Picshare$viewContent(model)
 					]))
 			]));
 };
